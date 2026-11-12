@@ -1,0 +1,305 @@
+{
+  "name": "AI Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alerts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0acbe268-a834-47bb-b5de-fa28650c3a97",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Alert status: {{ $json.body.status }}\nAlerts:\n{{ JSON.stringify($json.body.alerts, null, 2) }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the NOC (network operations center) assistant of a cloud infrastructure company. You will receive Prometheus/Alertmanager alerts as JSON. Your job: summarize the alert, suggest the likely cause and the first response steps, and assign a priority. Rules: - Rely only on the information in the alert; mark anything you are not sure about as \"likely\". - At most 4 first steps; they may include concrete commands (e.g. df -h, du -sh /var/*). - Priority: P1 = service outage or data loss risk, P2 = risk of an outage soon, P3 = monitor. - Never include personal data (email, IP, national ID number, etc.) in the answer."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        672,
+        0
+      ],
+      "id": "1b03e8ca-7ff9-4818-88c5-8d2e9689fb15",
+      "name": "Basic LLM Chain",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAzureOpenAi",
+      "typeVersion": 1.1,
+      "position": [
+        576,
+        272
+      ],
+      "id": "bc8b4622-2910-49cc-bbc3-3af291d176f1",
+      "name": "Microsoft Foundry Chat Model",
+      "credentials": {
+        "azureOpenAiApi": {
+          "name": "Microsoft Foundry (API Key) account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"summary\": \"Root disk on vm-gh-demo is 91% full.\",\n  \"likely_cause\": \"Log files or Docker images may have accumulated.\",\n  \"first_steps\": [\n    \"Confirm usage with df -h\",\n    \"Find large directories with du -sh /var/*\"\n  ],\n  \"priority\": \"P1\",\n  \"open_ticket\": true\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        272
+      ],
+      "id": "6e1b61f1-1be1-439a-82ae-f56f4d6d88c6",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "63b8fbcd-1aaf-4ff9-854a-7c2e8fe5d7c6",
+              "leftValue": "={{ $json.output.open_ticket }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1072,
+        -160
+      ],
+      "id": "da73c559-448b-4b2d-9a38-4002fd1d0ee0",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chatId": "<your-telegram-chat-id>",
+        "text": "={{ (() => {\n  const e = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  const o = $json.output;\n  const a = $('PII Masking').item.json.body.commonLabels;\n  return `🚨 <b>${e(o.priority)} | ${e(a.alertname)} @ ${e(a.host)}</b>\n\n<b>Summary:</b> ${e(o.summary)}\n\n<b>Likely cause:</b> ${e(o.likely_cause)}\n\n<b>First steps:</b>\n${o.first_steps.map((x, i) => `${i + 1}. ${e(x)}`).join('\\n')}`;\n})() }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        -48
+      ],
+      "id": "417f8403-ce1a-42d4-9944-41806be206bd",
+      "name": "Send a text message",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Masks personal data before the alert is sent to the LLM (GDPR / KVKK).\n// The number of masked values per type is also returned for auditing.\nconst patterns = [\n  { name: 'EMAIL',          re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/g },\n  { name: 'IBAN',           re: /\\bTR\\d{2}\\s?(?:\\d{4}\\s?){5}\\d{2}\\b/gi },\n  { name: 'CARD',           re: /\\b(?:\\d[ -]?){13,19}\\b/g },\n  { name: 'PHONE',          re: /(?:\\+90\\s?|\\b0)5\\d{2}\\s?\\d{3}\\s?\\d{2}\\s?\\d{2}\\b/g },\n  { name: 'NATIONAL_ID',    re: /\\b[1-9]\\d{10}\\b/g },\n  { name: 'IP',             re: /\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g },\n];\n\nfunction mask(value, stats) {\n  if (typeof value === 'string') {\n    let s = value;\n    for (const p of patterns) {\n      s = s.replace(p.re, () => {\n        stats[p.name] = (stats[p.name] || 0) + 1;\n        return `[${p.name}]`;\n      });\n    }\n    return s;\n  }\n  if (Array.isArray(value)) return value.map(v => mask(v, stats));\n  if (value && typeof value === 'object') {\n    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, mask(v, stats)]));\n  }\n  return value;\n}\n\nreturn $input.all().map(item => {\n  const stats = {};\n  const body = mask(item.json.body, stats);\n  return { json: { body, pii_masked: stats } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "ad402c5b-2a37-48a9-a7dc-fff8ecaa735a",
+      "name": "PII Masking"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "713fb140-6fdb-4183-acaa-cdff45884f15",
+              "leftValue": "={{ $json.body.status }}",
+              "rightValue": "firing",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.4,
+      "position": [
+        224,
+        0
+      ],
+      "id": "d2f9afb4-5b21-4c73-9c89-35aff5830924",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "chatId": "<your-telegram-chat-id>",
+        "text": "={{ (() => {\n  const e = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  const b = $('PII Masking').item.json.body;\n  const a = b.alerts?.[0] ?? {};\n  return `⚠️ <b>AI summary unavailable, raw alert:</b>\n<b>${e(b.commonLabels?.alertname)} @ ${e(b.commonLabels?.host)}</b> (${e(b.commonLabels?.severity)})\n\n${e(a.annotations?.summary)}\n${e(a.annotations?.description)}\n\nStarted: ${e(a.startsAt)}`;\n})() }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1088,
+        128
+      ],
+      "id": "12a65093-98ad-45da-b841-0474961ba095",
+      "name": "Alert Without Summary",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft Foundry Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert Without Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PII Masking": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "PII Masking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "tags": []
+}

@@ -1,0 +1,223 @@
+{
+  "name": "SIEM Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "siem",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -256,
+        -96
+      ],
+      "id": "01e74e82-af37-40a1-80fc-5a114603036f",
+      "name": "Webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $json.body.object.properties;\nconst alert = p.alerts?.[0]?.properties ?? {};\nconst ent = p.relatedEntities ?? [];\n\nreturn [{ json: {\n  incident_number: p.incidentNumber,\n  title: p.title,\n  description: p.description,\n  severity: p.severity,\n  first_activity: p.firstActivityTimeUtc,\n  last_activity: p.lastActivityTimeUtc,\n  tactics: p.additionalData?.tactics ?? [],\n  techniques: p.additionalData?.techniques ?? [],\n  target_host: ent.find(e => e.kind === 'Host')?.properties?.hostName ?? null,\n  source_ip: ent.find(e => e.kind === 'Ip')?.properties?.address ?? null,\n  link: alert.alertLink ?? p.incidentUrl,\n}}];"
+      },
+      "id": "eb433727-ed3c-46d6-a42d-682aee7f5d06",
+      "name": "Incident Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Evaluate the following Microsoft Sentinel incident.\n\nIncident: {{ JSON.stringify($json) }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a SOC (security operations center) analyst. Evaluate the Microsoft Sentinel incident you are given.\nRules:\n1. Rely only on the given fields; do not invent missing information.\n2. If you see documentation IP ranges such as 203.0.113.0/24, 198.51.100.0/24 or 192.0.2.0/24, note that this may be a test/simulation.\n3. Do not make decisions, make recommendations; a human will approve the actions.\n4. Keep recommended actions short and actionable.\n5. Put ONLY one of these values in the \"risk\" field: Low, Medium, High, Critical. Put the reasoning in the \"likely_cause\" field.\n6. Keep \"summary\" to 2-3 sentences at most."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        224,
+        -96
+      ],
+      "id": "b8c51842-bd81-4251-b55c-ac8f5cf52999",
+      "name": "Basic LLM Chain",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAzureOpenAi",
+      "typeVersion": 1.1,
+      "position": [
+        176,
+        128
+      ],
+      "id": "e862f0a6-9667-4b62-9d13-7e6a0777d1e7",
+      "name": "Microsoft Foundry Chat Model",
+      "credentials": {
+        "azureOpenAiApi": {
+          "name": "Microsoft Foundry (API Key) account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"summary\": \"...\",\n  \"risk\": \"Medium\",\n  \"likely_cause\": \"...\",\n  \"recommended_actions\": [\n    \"...\",\n    \"...\"\n  ],\n  \"false_positive_likelihood\": \"Low\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        368,
+        128
+      ],
+      "id": "543f6fde-7fcd-4d7d-a92e-83883e087283",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "chatId": "<your-telegram-chat-id>",
+        "text": "={{ (() => {\nconst e = s => String(s ?? '-').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\nconst o = $json.output;\nconst d = $('Incident Summary').item.json;\nreturn '🛡️ <b>SIEM #' + e(d.incident_number) + ' — ' + e(d.title) + '</b>\\n'\n + 'Severity: ' + e(d.severity) + ' | AI risk: <b>' + e(o.risk) + '</b>\\n'\n + 'Host: ' + e(d.target_host) + ' | Source IP: <code>' + e(d.source_ip) + '</code>\\n'\n + 'MITRE: ' + e((d.techniques || []).join(', ')) + '\\n\\n'\n + e(o.summary) + '\\n\\n'\n + '<b>Likely cause:</b> ' + e(o.likely_cause) + '\\n'\n + '<b>Recommended actions:</b>\\n'\n + (o.recommended_actions || []).map(a => '• ' + e(a)).join('\\n') + '\\n\\n'\n + '<a href=\"' + e(d.link) + '\">Open in Defender</a>';\n})() }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        512,
+        -224
+      ],
+      "id": "d77ce33c-5402-4ec6-9847-45d16e7dbd8e",
+      "name": "SIEM Notification",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "<your-telegram-chat-id>",
+        "text": "={{ (() => {\nconst e = s => String(s ?? '-').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\nconst d = $('Incident Summary').item.json;\nreturn '🛡️ <b>SIEM #' + e(d.incident_number) + ' — ' + e(d.title) + '</b> (AI summary unavailable)\\n'\n + 'Severity: ' + e(d.severity) + '\\n'\n + 'Host: ' + e(d.target_host) + ' | Source IP: <code>' + e(d.source_ip) + '</code>\\n'\n + e(d.description) + '\\n\\n'\n + '<a href=\"' + e(d.link) + '\">Open in Defender</a>';\n})() }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        512,
+        32
+      ],
+      "id": "bc5b2731-afb1-4df0-a94a-1cc657ae4711",
+      "name": "SIEM Notification Without Summary",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Incident Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incident Summary": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "SIEM Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SIEM Notification Without Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft Foundry Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "tags": []
+}

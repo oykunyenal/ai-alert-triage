@@ -1,0 +1,99 @@
+{
+  "name": "Runbook MCP",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "bearerAuth",
+        "path": "runbook"
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        -224
+      ],
+      "id": "18c0172d-0273-4fb6-b242-463ca6c69af2",
+      "name": "MCP Server Trigger",
+      "credentials": {
+        "httpBearerAuth": {
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Searches the company's operations runbooks. Use this tool when asked about infrastructure problems such as disk, CPU, unreachable services, backups, certificates, automation failures or Windows services.",
+        "tableName": "runbooks",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePGVector",
+      "typeVersion": 1.4,
+      "position": [
+        368,
+        16
+      ],
+      "id": "78f62a6a-cd76-49bc-8f06-b9dfcea6b6f6",
+      "name": "search_runbooks",
+      "credentials": {
+        "postgres": {
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsAzureOpenAi",
+      "typeVersion": 1,
+      "position": [
+        464,
+        224
+      ],
+      "id": "38260fa4-3706-4be8-8936-11d44103c378",
+      "name": "Microsoft Foundry Embeddings",
+      "credentials": {
+        "azureOpenAiApi": {
+          "name": "Microsoft Foundry (API Key) account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "search_runbooks": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft Foundry Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "search_runbooks",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "tags": []
+}

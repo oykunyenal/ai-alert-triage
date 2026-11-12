@@ -1,0 +1,18 @@
+{
+  "receiver": "n8n",
+  "status": "firing",
+  "groupKey": "{}:{alertname=\"HighDiskUsage\", host=\"vm-gh-demo\"}",
+  "commonLabels": { "alertname": "HighDiskUsage", "host": "vm-gh-demo", "severity": "critical" },
+  "alerts": [
+    {
+      "status": "firing",
+      "fingerprint": "demo-0001",
+      "startsAt": "2026-11-06T12:00:00Z",
+      "labels": { "alertname": "HighDiskUsage", "host": "vm-gh-demo", "severity": "critical", "mountpoint": "/" },
+      "annotations": {
+        "summary": "Disk usage 91%",
+        "description": "Root disk on vm-gh-demo is above 80%. Last deployed by: john.doe@example.com, IP 10.0.0.12"
+      }
+    }
+  ]
+}

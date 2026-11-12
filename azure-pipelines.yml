@@ -1,0 +1,67 @@
+# Azure DevOps pipeline: deploys the stack to the VM on every push to main.
+# Runs on a self-hosted agent on the VM (pool: gh-demo); no SSH needed.
+# Secret values are stored as secrets in the "gh-demo-secrets" variable group.
+
+trigger:
+  branches:
+    include: [main]
+
+pool:
+  name: gh-demo
+
+variables:
+  - group: gh-demo-secrets
+  - name: DEPLOY_DIR
+    value: /opt/gh-demo
+  - name: DOMAIN
+    value: <your-domain>
+  - name: N8N_VERSION
+    value: "2.46.6"   # upgrading = changing this line and pushing
+
+steps:
+  - checkout: self
+
+  - script: docker compose config --quiet
+    displayName: Validate compose file
+    env:
+      DOMAIN: $(DOMAIN)
+      POSTGRES_PASSWORD: dummy
+      N8N_ENCRYPTION_KEY: dummy
+      GRAFANA_ADMIN_PASSWORD: dummy
+
+  - script: |
+      set -euo pipefail
+      mkdir -p "$DEPLOY_DIR"
+      rsync -a --delete --exclude .git --exclude .env ./ "$DEPLOY_DIR"/
+      umask 077
+      cat > "$DEPLOY_DIR/.env" <<ENV
+      DOMAIN=$(DOMAIN)
+      N8N_VERSION=$(N8N_VERSION)
+      POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+      N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
+      GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD
+      ENV
+    displayName: Prepare files and .env
+    env:
+      # Secret variables only reach the script when mapped explicitly.
+      POSTGRES_PASSWORD: $(POSTGRES_PASSWORD)
+      N8N_ENCRYPTION_KEY: $(N8N_ENCRYPTION_KEY)
+      GRAFANA_ADMIN_PASSWORD: $(GRAFANA_ADMIN_PASSWORD)
+
+  - script: |
+      set -euo pipefail
+      cd "$DEPLOY_DIR"
+      docker compose pull
+      docker compose up -d --remove-orphans
+      # Changing bind-mounted config files does not recreate containers; reload the configs.
+      docker compose restart caddy prometheus alertmanager
+      docker compose ps
+    displayName: Deploy (docker compose up)
+
+  - script: |
+      for i in $(seq 1 20); do
+        if curl -fsS --max-time 10 "https://$(DOMAIN)/healthz"; then echo; echo "n8n is up"; exit 0; fi
+        sleep 10
+      done
+      echo "Smoke test failed"; exit 1
+    displayName: Smoke test

@@ -1,0 +1,175 @@
+{
+  "name": "Runbook Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a41d570a-850f-4293-884c-b84d4d92d63b",
+      "name": "When chat message received"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are the runbook assistant of an operations team. You help on-call engineers with infrastructure problems.\n\nRules:\n1. For every infrastructure question, use the search_runbooks tool first.\n2. Base your answer ONLY on the runbook chunks returned by the tool. Do not add your own general knowledge or invent commands.\n3. End every answer with the source: \"Source: RB-00X <runbook name>\".\n4. If the returned chunks are not relevant to the question or there are no results, say: \"I could not find a runbook for this. Please escalate to the on-call team lead.\" Do not guess.\n5. Write steps as a short numbered list. If a step is risky (deleting, restarting), say so explicitly."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "ce5bf4a9-f350-4fef-b21a-b35627bb63d8",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAzureOpenAi",
+      "typeVersion": 1.1,
+      "position": [
+        96,
+        208
+      ],
+      "id": "2617d5c1-ea90-4f70-a7c6-085a109a3b67",
+      "name": "Microsoft Foundry Chat Model",
+      "credentials": {
+        "azureOpenAiApi": {
+          "name": "Microsoft Foundry (API Key) account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        208
+      ],
+      "id": "9a3ffe5b-b09c-4c9e-8e8b-cc5e56ddd840",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsAzureOpenAi",
+      "typeVersion": 1,
+      "position": [
+        352,
+        400
+      ],
+      "id": "d98bf847-ebe5-4a07-b670-d328b4865cb4",
+      "name": "Microsoft Foundry Embeddings",
+      "credentials": {
+        "azureOpenAiApi": {
+          "name": "Microsoft Foundry (API Key) account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Searches the company's operations runbooks. Use this tool when asked about infrastructure problems such as disk, CPU, unreachable services, backups, certificates, automation failures or Windows services.",
+        "tableName": "runbooks",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePGVector",
+      "typeVersion": 1.4,
+      "position": [
+        384,
+        240
+      ],
+      "id": "da255605-b2e0-4db6-8194-d1b96ab1ddbf",
+      "name": "search_runbooks",
+      "credentials": {
+        "postgres": {
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft Foundry Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft Foundry Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "search_runbooks",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_runbooks": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "tags": []
+}

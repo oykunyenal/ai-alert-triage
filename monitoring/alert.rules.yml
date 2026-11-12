@@ -1,0 +1,24 @@
+groups:
+  - name: host
+    rules:
+      - alert: HighDiskUsage
+        expr: (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"}) * 100 > 80
+        for: 30s   # short for the demo; use something longer like 5m in production
+        labels: { severity: critical }
+        annotations:
+          summary: "Disk usage {{ $value | humanize }}%"
+          description: "Root disk on {{ $labels.host }} is above 80%."
+      - alert: HighCpuLoad
+        expr: 100 - (avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 85
+        for: 3m
+        labels: { severity: warning }
+        annotations:
+          summary: "CPU usage {{ $value | humanize }}%"
+          description: "CPU on {{ $labels.host }} has been above 85% for 3 minutes."
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Target {{ $labels.job }} is unreachable"
+          description: "Prometheus cannot scrape metrics from {{ $labels.instance }}."
